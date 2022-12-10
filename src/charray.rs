@@ -1,6 +1,6 @@
 use binrw::{binrw, NullString};
 
-use crate::{jgr::SLXI, Gamma};
+use crate::{gamma::Gamma, jgr::SLXI};
 
 #[binrw]
 #[derive(Debug)]

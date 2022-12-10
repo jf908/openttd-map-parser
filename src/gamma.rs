@@ -1,6 +1,6 @@
-use std::io::{Read, Seek, Write};
+use std::io::{Read, Seek};
 
-use binrw::{BinRead, BinResult};
+use binrw::{binrw, BinRead, BinResult};
 
 // Read a gamma value which can be 1-5 bytes of data to represent a u32
 //   0xxxxxxx
@@ -59,6 +59,13 @@ pub fn gamma_length(i: u32) -> u32 {
         + (if i >= (1 << 14) { 1 } else { 0 })
         + (if i >= (1 << 21) { 1 } else { 0 })
         + (if i >= (1 << 28) { 1 } else { 0 })
+}
+
+#[binrw]
+pub struct Gamma {
+    #[br(parse_with = parse_gamma)]
+    #[bw(write_with = write_gamma)]
+    pub value: u32,
 }
 
 #[cfg(test)]

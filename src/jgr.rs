@@ -4,7 +4,7 @@ use modular_bitfield::{
     specifiers::{B24, B4},
 };
 
-use crate::Gamma;
+use crate::gamma::Gamma;
 
 #[binrw]
 #[brw(big)]

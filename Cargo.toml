@@ -9,4 +9,5 @@ edition = "2021"
 # binrw = "0.10"
 binrw = { git = "https://github.com/jam1garner/binrw.git" }
 xz2 = "0.1"
+zstd = "0.12.1"
 modular-bitfield = "0.11.2"
