@@ -1,0 +1,12 @@
+[package]
+name = "openttd-map-parser"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# binrw = "0.10"
+binrw = { git = "https://github.com/jam1garner/binrw.git" }
+xz2 = "0.1"
+modular-bitfield = "0.11.2"
