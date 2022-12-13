@@ -1,6 +1,6 @@
 # OpenTTD Map Parser (and Writer)
 
-This library is a WIP map parser and writer for OpenTTD written in Rust with ✨[binrw](https://binrw.rs/)✨.
+This library is a 🔥blazing🔥 fast WIP map parser and writer for OpenTTD written in Rust🚀🚀🚀 with ✨[binrw](https://binrw.rs/)✨.
 The outer structure can be fully parsed/written but you will have to know the structure details to do more interesting things.
 
 Right now you can use the town renamer CLI to import/export a list of town names specifically for JGR savefiles.
