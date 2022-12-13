@@ -1,8 +1,9 @@
-use binrw::{binrw, NullString};
+use binrw::binrw;
 
 use crate::{gamma::Gamma, jgr::SLXI};
 
 #[binrw]
+#[brw(big)]
 #[derive(Debug)]
 pub struct Supplied {
     old_max: u32,
@@ -21,12 +22,16 @@ pub struct Received {
     new_act: u16,
 }
 
+const NUM_TE: usize = 6;
+const MAX_COMPANIES: usize = 0x0F;
+const MAX_CARGO: usize = 64;
+
 #[binrw]
 #[brw(big)]
-#[br(import { slxi: &SLXI })]
+#[brw(import { slxi: &SLXI })]
 #[derive(Debug)]
 pub struct City {
-    xy: u32,
+    pub xy: u32,
     townnamegrfid: u32,
     townnametype: u16,
     townnameparts: u32,
@@ -35,29 +40,17 @@ pub struct City {
     name_size: Gamma,
     #[br(count = name_size.value, map = |x: Vec<u8>| String::from_utf8_lossy(&x).to_string())]
     #[bw(map = |x: &String| x.as_bytes())]
-    name: String,
+    pub name: String,
     flags: u8,
-    #[br(if(slxi.has_feature("town_multi_building")))]
+    #[brw(if(slxi.has_feature("town_multi_building")))]
     church_count: Option<u16>,
-    #[br(if(slxi.has_feature("town_multi_building")))]
+    #[brw(if(slxi.has_feature("town_multi_building")))]
     stadium_count: Option<u16>,
     statues: u16,
     have_ratings: u16,
-    #[br(temp)]
-    #[bw(calc = Gamma { value: (ratings.len()).try_into().unwrap() })]
-    ratings_size: Gamma,
-    #[br(count = ratings_size.value)]
-    ratings: Vec<u16>,
-    #[br(temp)]
-    #[bw(calc = Gamma { value: (unwanted.len()).try_into().unwrap() })]
-    unwanted_size: Gamma,
-    #[br(count = unwanted_size.value)]
-    unwanted: Vec<u8>,
-    #[br(temp)]
-    #[bw(calc = Gamma { value: (goal.len()).try_into().unwrap() })]
-    goal_size: Gamma,
-    #[br(count = goal_size.value)]
-    goal: Vec<u32>,
+    ratings: [u16; MAX_COMPANIES],
+    unwanted: [u8; MAX_COMPANIES],
+    goal: [u32; NUM_TE],
     #[br(temp)]
     #[bw(calc = Gamma { value: (text.len()).try_into().unwrap() })]
     text_size: Gamma,
@@ -73,19 +66,27 @@ pub struct City {
     exlusive_counter: u8,
     larger_town: i8,
     layout: u8,
-    // #[br(temp)]
-    // #[bw(calc = Gamma { value: (psa_list.len()).try_into().unwrap() })]
-    // psa_list_size: Gamma,
-    // #[br(count = psa_list_size.value)]
-    // psa_list: Vec<u32>,
-    // #[br(temp)]
-    // #[bw(calc = Gamma { value: (supplied.len()).try_into().unwrap() })]
-    // supplied_size: Gamma,
-    // #[br(count = supplied_size.value)]
-    // supplied: Vec<Supplied>,
-    // #[br(temp)]
-    // #[bw(calc = Gamma { value: (received.len()).try_into().unwrap() })]
-    // received_size: Gamma,
-    // #[br(count = received_size.value)]
-    // received: Vec<Received>,
+    #[br(temp)]
+    #[bw(calc = psa_list.len().try_into().unwrap())]
+    psa_list_size: u32,
+    #[br(count = psa_list_size)]
+    psa_list: Vec<u32>,
+    #[brw(if(slxi.has_feature("town_setting_override")))]
+    override_flags: u8,
+    #[brw(if(slxi.has_feature("town_setting_override")))]
+    override_values: u8,
+    #[brw(if(slxi.has_feature("town_setting_override")))]
+    build_tunnels: u8,
+    #[brw(if(slxi.has_feature("town_setting_override")))]
+    max_road_slope: u8,
+    supplied: [Supplied; MAX_CARGO],
+    received: [Received; NUM_TE],
+}
+
+#[binrw]
+#[brw(big)]
+#[derive(Debug)]
+pub struct Maps {
+    pub dim_x: u32,
+    pub dim_y: u32,
 }

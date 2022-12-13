@@ -1,4 +1,4 @@
-use std::io::{BufWriter, Cursor, Read, Result, Write};
+use std::io::{Cursor, Read, Result, Write};
 
 use crate::gamma::{gamma_length, parse_gamma, write_gamma, Gamma};
 use crate::helpers::until_magic;
@@ -124,7 +124,11 @@ fn chunk_writer(chunks: &Vec<Chunk>, compression_type: &CompressionType) -> BinR
         CompressionType::OTTD => {
             panic!("Old save file not supported")
         }
-        CompressionType::OTTN => chunks.write_options(writer, endian, ()),
+        CompressionType::OTTN => {
+            chunks.write_options(writer, endian, ())?;
+            // Terminator
+            0u32.write_options(writer, endian, ())
+        }
         CompressionType::OTTZ => {
             panic!("zlib compression not supported (yet)")
         }
@@ -132,7 +136,10 @@ fn chunk_writer(chunks: &Vec<Chunk>, compression_type: &CompressionType) -> BinR
             let mut buffer: Vec<u8> = Vec::new();
 
             {
-                chunks.write_options(&mut Cursor::new(&mut buffer), endian, ())?;
+                let mut writer = Cursor::new(&mut buffer);
+                chunks.write_options(&mut writer, endian, ())?;
+                // Terminator
+                0u32.write_options(&mut writer, endian, ())?;
             }
 
             let mut encoder = XzEncoder::new(writer, 2);
@@ -144,7 +151,10 @@ fn chunk_writer(chunks: &Vec<Chunk>, compression_type: &CompressionType) -> BinR
             let mut buffer: Vec<u8> = Vec::new();
 
             {
-                chunks.write_options(&mut Cursor::new(&mut buffer), endian, ())?;
+                let mut writer = Cursor::new(&mut buffer);
+                chunks.write_options(&mut writer, endian, ())?;
+                // Terminator
+                0u32.write_options(&mut writer, endian, ())?;
             }
 
             zstd::stream::copy_encode(&mut Cursor::new(buffer), writer, 0)?;
@@ -171,7 +181,7 @@ pub struct Save {
     _ignore: u16,
     // Wish I could use map_stream here from the new PR but no rust LZMA decompressers support Read + Seek :(
     #[br(parse_with = |r,e,_: ()| chunk_reader(r, e, &compression_type))]
-    #[bw(write_with = |r,e,d,_: ()| chunk_writer(r, e, d, &compression_type), pad_after = 4)]
+    #[bw(write_with = |r,e,d,_: ()| chunk_writer(r, e, d, &compression_type))]
     // #[bw(map = |chunk: &Chunk| compress_save(&compression_type, blob))]
     pub chunks: Vec<Chunk>,
 }
@@ -306,7 +316,7 @@ enum TableData {
     #[br(pre_assert(sle_type == SleType::UInt64))]
     UInt64(u64),
     #[br(pre_assert(sle_type == SleType::StringId))]
-    StringId(u16),
+    StringId(u32),
     #[br(pre_assert(sle_type == SleType::Str))]
     Str(TableDataList<u8>),
     #[br(pre_assert(sle_type == SleType::Struct))]
@@ -359,7 +369,7 @@ impl ChunkType {
         let mut riff_size: u8 = 0;
         let chunk_type = match chunk {
             ChunkValue::ChRiff { data, .. } => {
-                riff_size = (data.len() << 24) as u8;
+                riff_size = (data.len() >> 24) as u8;
                 0
             }
             ChunkValue::ChArray { .. } => 1,
@@ -381,8 +391,8 @@ impl ChunkType {
 pub enum ChunkValue {
     #[br(pre_assert(chunk_type.chunk_type() == 0))]
     ChRiff {
-        #[br(map = |x: [u8;3]| ((x[0] as u32) << 16) | ((x[1] as u32) << 8) | (x[2] as u32) | (((chunk_type.riff_size()) as u32) << 24))]
-        #[bw(map = |x: &u32| { let bytes = x.to_be_bytes(); [bytes[1], bytes[2], bytes[3]] })]
+        #[br(temp, map = |x: [u8;3]| ((x[0] as u32) << 16) | ((x[1] as u32) << 8) | (x[2] as u32) | (((chunk_type.riff_size()) as u32) << 24))]
+        #[bw(calc = data.len().try_into().unwrap(), map = |x: u32| { let bytes = x.to_be_bytes(); [bytes[1], bytes[2], bytes[3]] })]
         size: u32,
         #[br(count = size)]
         data: Vec<u8>,

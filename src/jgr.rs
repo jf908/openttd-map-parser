@@ -30,13 +30,13 @@ impl SLXI {
 #[derive(Debug, Clone, Copy)]
 #[br(map = Self::from_bytes)]
 #[bw(map = |&x| Self::into_bytes(x))]
-struct SlxiSubChunkFlags {
+pub struct SlxiSubChunkFlags {
     #[skip]
     __: B24,
-    ignorable_unknown: bool,
-    ignorable_version: bool,
-    extra_data_present: bool,
-    chunk_id_list_present: bool,
+    pub ignorable_unknown: bool,
+    pub ignorable_version: bool,
+    pub extra_data_present: bool,
+    pub chunk_id_list_present: bool,
     #[skip]
     __: B4,
 }
