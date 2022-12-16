@@ -8,7 +8,9 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use ottd_map_parser::{
-    charray, jgr,
+    charray::{self, Maps},
+    chtable::TableData,
+    jgr,
     save::{ChArrayElement, Chunk, ChunkValue, Save},
 };
 
@@ -82,7 +84,27 @@ fn main() -> Result<()> {
             let map_info: charray::Maps = match &maps.value {
                 ChunkValue::ChRiff { data } => Cursor::new(data).read_ne().unwrap(),
                 ChunkValue::ChTable { elements, .. } => {
-                    Cursor::new(&elements[0].data).read_ne().unwrap()
+                    let dim_x = elements[0]
+                        .data
+                        .iter()
+                        .find(|(k, _)| k == "dim_x")
+                        .and_then(|(_, v)| match &v {
+                            TableData::UInt32(x) => Some(*x),
+                            _ => None,
+                        })
+                        .expect("Something wrong with MAPS");
+
+                    let dim_y = elements[0]
+                        .data
+                        .iter()
+                        .find(|(k, _)| k == "dim_y")
+                        .and_then(|(_, v)| match &v {
+                            TableData::UInt32(x) => Some(*x),
+                            _ => None,
+                        })
+                        .expect("Something wrong with MAPS");
+
+                    Maps { dim_x, dim_y }
                 }
                 _ => {
                     panic!("Something wrong with MAPS")

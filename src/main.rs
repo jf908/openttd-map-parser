@@ -5,6 +5,7 @@ use std::{
 
 use ottd_map_parser::{
     charray,
+    chtable::TableData,
     save::{ChunkValue, Save},
 };
 
@@ -35,7 +36,30 @@ fn main() -> Result<()> {
     let maps = save.chunks.iter().find(|x| &x.tag == b"MAPS").unwrap();
     let map_info: charray::Maps = match &maps.value {
         ChunkValue::ChRiff { data } => Cursor::new(data).read_ne().unwrap(),
-        ChunkValue::ChTable { elements, .. } => Cursor::new(&elements[0].data).read_ne().unwrap(),
+        ChunkValue::ChTable { elements, .. } => {
+            let dim_x = elements[0]
+                .data
+                .iter()
+                .find(|(k, _)| k == "dim_x")
+                .and_then(|(_, v)| match &v {
+                    TableData::UInt32(x) => Some(*x),
+                    _ => None,
+                })
+                .expect("Something wrong with MAPS");
+
+            let dim_y = elements[0]
+                .data
+                .iter()
+                .find(|(k, _)| k == "dim_y")
+                .and_then(|(_, v)| match &v {
+                    TableData::UInt32(x) => Some(*x),
+                    _ => None,
+                })
+                .expect("Something wrong with MAPS");
+
+            charray::Maps { dim_x, dim_y }
+        }
+        // ChunkValue::ChTable { elements, .. } => Cursor::new(&elements[0].data).read_ne().unwrap(),
         _ => {
             panic!("Something wrong with MAPS")
         }

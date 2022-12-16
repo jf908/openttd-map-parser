@@ -2,29 +2,17 @@ use binrw::binrw;
 
 use crate::{gamma::Gamma, jgr::SLXI};
 
-#[binrw]
-#[brw(big)]
-#[derive(Debug)]
-pub struct Supplied {
-    old_max: u32,
-    new_max: u32,
-    old_act: u32,
-    new_act: u32,
-}
-
-#[binrw]
-#[brw(big)]
-#[derive(Debug)]
-pub struct Received {
-    old_max: u16,
-    new_max: u16,
-    old_act: u16,
-    new_act: u16,
-}
-
 const NUM_TE: usize = 6;
 const MAX_COMPANIES: usize = 0x0F;
 const MAX_CARGO: usize = 64;
+
+#[binrw]
+#[brw(big)]
+#[derive(Debug)]
+pub struct Maps {
+    pub dim_x: u32,
+    pub dim_y: u32,
+}
 
 #[binrw]
 #[brw(big)]
@@ -86,7 +74,19 @@ pub struct City {
 #[binrw]
 #[brw(big)]
 #[derive(Debug)]
-pub struct Maps {
-    pub dim_x: u32,
-    pub dim_y: u32,
+pub struct Supplied {
+    old_max: u32,
+    new_max: u32,
+    old_act: u32,
+    new_act: u32,
+}
+
+#[binrw]
+#[brw(big)]
+#[derive(Debug)]
+pub struct Received {
+    old_max: u16,
+    new_max: u16,
+    old_act: u16,
+    new_act: u16,
 }

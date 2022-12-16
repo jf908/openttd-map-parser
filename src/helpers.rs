@@ -1,9 +1,7 @@
-use std::{
+use binrw::{
     io::{Read, Seek, SeekFrom},
-    iter::from_fn,
+    BinRead, BinResult, Endian,
 };
-
-use binrw::{BinRead, BinResult, Endian};
 
 #[binrw::parser(reader, endian)]
 fn default_reader<'a, T: BinRead>(args: T::Args<'a>, ...) -> BinResult<T>
@@ -58,7 +56,7 @@ where
     Ret: FromIterator<T>,
 {
     move |reader, endian, args| {
-        from_fn(|| {
+        core::iter::from_fn(|| {
             let stored_position = match reader.stream_position() {
                 Ok(val) => val,
                 Err(err) => return Some(Err(err.into())),
@@ -86,5 +84,23 @@ where
         })
         .fuse()
         .collect()
+    }
+}
+
+pub fn new_args_iter_with<Reader, T, Arg, Ret, It, ReadFn>(
+    it: It,
+    read: ReadFn,
+) -> impl FnOnce(&mut Reader, Endian, ()) -> BinResult<Ret>
+where
+    Reader: Read + Seek,
+    Arg: Clone,
+    Ret: FromIterator<T>,
+    It: IntoIterator<Item = Arg>,
+    ReadFn: Fn(&mut Reader, Endian, Arg) -> BinResult<T>,
+{
+    move |reader, options, _| {
+        it.into_iter()
+            .map(|arg| read(reader, options, arg))
+            .collect()
     }
 }

@@ -1,8 +1,11 @@
-use std::io::{Cursor, Read, Result, Write};
-
+use crate::chtable::{ChSparseTableElement, ChTableElement, StructHeader, TableHeaderProperty};
 use crate::gamma::{gamma_length, parse_gamma, write_gamma, Gamma};
-use crate::helpers::until_magic;
-use binrw::{binrw, until_eof, BinRead, BinResult, BinWrite};
+use crate::helpers::{until_magic, until_magic_with};
+use binrw::{
+    binrw,
+    io::{Cursor, Read, Result, Write},
+    until_eof, BinRead, BinResult, BinWrite,
+};
 use modular_bitfield::{bitfield, specifiers::B4};
 use xz2::{read::XzDecoder, write::XzEncoder};
 
@@ -24,32 +27,6 @@ pub enum CompressionType {
     // Compressed with zstd (from JGR, not in vanilla OpenTTD)
     #[brw(magic = b"OTTS")]
     OTTS,
-}
-
-#[binrw]
-#[brw(repr(u8))]
-#[derive(Debug, Clone, PartialEq)]
-pub enum SleType {
-    Int8 = 1,
-    UInt8 = 2,
-    Int16 = 3,
-    UInt16 = 4,
-    Int32 = 5,
-    UInt32 = 6,
-    Int64 = 7,
-    UInt64 = 8,
-    StringId = 9,
-    Str = 0b11010,
-    Struct = 0b11011,
-    Int8List = 0b10001,
-    UInt8List = 0b10010,
-    Int16List = 0b10011,
-    UInt16List = 0b10100,
-    Int32List = 0b10101,
-    UInt32List = 0b10110,
-    Int64List = 0b10111,
-    UInt64List = 0b11000,
-    StringIdList = 0b11001,
 }
 
 fn compress_save(compression_type: &CompressionType, blob: &Vec<u8>) -> Result<Vec<u8>> {
@@ -182,7 +159,6 @@ pub struct Save {
     // Wish I could use map_stream here from the new PR but no rust LZMA decompressers support Read + Seek :(
     #[br(parse_with = |r,e,_: ()| chunk_reader(r, e, &compression_type))]
     #[bw(write_with = |r,e,d,_: ()| chunk_writer(r, e, d, &compression_type))]
-    // #[bw(map = |chunk: &Chunk| compress_save(&compression_type, blob))]
     pub chunks: Vec<Chunk>,
 }
 
@@ -216,9 +192,6 @@ pub struct Chunks {
 #[brw(big)]
 pub struct Chunk {
     pub tag: [u8; 4],
-    // #[br(map = |x: [u8; 4]|  String::from_utf8_lossy(&x).to_string() )]
-    // #[bw(map = |x| TryInto::<[u8; 4]>::try_into(x.as_bytes()).unwrap())]
-    // tag: String,
     #[br(temp)]
     #[bw(calc = ChunkType::get_chunk_type(value))]
     chunk_type: ChunkType,
@@ -231,9 +204,6 @@ pub struct Chunk {
 #[derive(Debug)]
 pub struct ChArrayElement {
     // Actual length = size - 1
-    // #[br(parse_with = parse_gamma, temp)]
-    // #[bw(write_with = write_gamma, calc = data.len().try_into().unwrap())]
-    // size: u32,
     #[br(temp)]
     #[bw(calc = Gamma { value: (data.len() + 1).try_into().unwrap() })]
     size: Gamma,
@@ -254,104 +224,6 @@ pub struct ChSparseArrayElement {
     pub index: u32,
     #[br(count = size.value.saturating_sub(1 + gamma_length(index)))]
     pub data: Vec<u8>,
-}
-
-#[binrw]
-#[brw(big)]
-#[derive(Debug)]
-struct HeaderProperty {
-    data_type: SleType,
-    #[br(temp)]
-    #[bw(calc = Gamma { value: key.len().try_into().unwrap() })]
-    size: Gamma,
-    #[br(count = size.value, map = |x: Vec<u8>| String::from_utf8_lossy(&x).to_string())]
-    #[bw(map = |x: &String| x.as_bytes())]
-    key: String,
-}
-
-impl HeaderProperty {
-    fn byte_len(&self) -> usize {
-        1 + (gamma_length(self.key.len().try_into().unwrap()) as usize) + self.key.len()
-    }
-}
-
-#[binrw]
-#[brw(big)]
-#[derive(Debug)]
-pub struct StructHeader {
-    #[br(parse_with = until_magic(0u8))]
-    #[bw(pad_after = 1)]
-    properties: Vec<HeaderProperty>,
-    #[br(count = properties.iter().filter(|x| x.data_type == SleType::Struct).count())]
-    sub_headers: Vec<StructHeader>,
-}
-
-impl StructHeader {
-    fn byte_len(&self) -> usize {
-        self.properties.iter().map(|x| x.byte_len()).sum::<usize>()
-            + 1 // Terminator
-            + self.sub_headers.iter().map(|x| x.byte_len()).sum::<usize>()
-    }
-}
-
-// #[br(import { chunk_type: u8 })]
-#[binrw]
-#[br(import { sle_type: SleType })]
-#[derive(Debug)]
-enum TableData {
-    #[br(pre_assert(sle_type == SleType::Int8))]
-    Int8(i8),
-    #[br(pre_assert(sle_type == SleType::UInt8))]
-    UInt8(u8),
-    #[br(pre_assert(sle_type == SleType::Int16))]
-    Int16(i16),
-    #[br(pre_assert(sle_type == SleType::UInt16))]
-    UInt16(u16),
-    #[br(pre_assert(sle_type == SleType::Int32))]
-    Int32(i32),
-    #[br(pre_assert(sle_type == SleType::UInt32))]
-    UInt32(u32),
-    #[br(pre_assert(sle_type == SleType::Int64))]
-    Int64(i64),
-    #[br(pre_assert(sle_type == SleType::UInt64))]
-    UInt64(u64),
-    #[br(pre_assert(sle_type == SleType::StringId))]
-    StringId(u32),
-    #[br(pre_assert(sle_type == SleType::Str))]
-    Str(TableDataList<u8>),
-    #[br(pre_assert(sle_type == SleType::Struct))]
-    Struct(TableDataList<u8>),
-    #[br(pre_assert(sle_type == SleType::Int8List))]
-    Int8List(TableDataList<i8>),
-    #[br(pre_assert(sle_type == SleType::UInt8List))]
-    UInt8List(TableDataList<u8>),
-    #[br(pre_assert(sle_type == SleType::Int16List))]
-    Int16List(TableDataList<i16>),
-    #[br(pre_assert(sle_type == SleType::UInt16List))]
-    UInt16List(TableDataList<u16>),
-    #[br(pre_assert(sle_type == SleType::Int32List))]
-    Int32List(TableDataList<i32>),
-    #[br(pre_assert(sle_type == SleType::UInt32List))]
-    UInt32List(TableDataList<u32>),
-    #[br(pre_assert(sle_type == SleType::Int64List))]
-    Int64List(TableDataList<i64>),
-    #[br(pre_assert(sle_type == SleType::UInt64List))]
-    UInt64List(TableDataList<u64>),
-    #[br(pre_assert(sle_type == SleType::StringIdList))]
-    StringIdList(TableDataList<u16>),
-}
-
-#[binrw]
-#[derive(Debug)]
-pub struct TableDataList<T>
-where
-    T: for<'a> BinRead<Args<'a> = ()> + for<'a> BinWrite<Args<'a> = ()> + 'static,
-{
-    #[br(temp)]
-    #[bw(calc = Gamma { value: data.len().try_into().unwrap() })]
-    size: Gamma,
-    #[br(count = size.value)]
-    data: Vec<T>,
 }
 
 #[bitfield]
@@ -412,22 +284,34 @@ pub enum ChunkValue {
     #[br(pre_assert(chunk_type.chunk_type() == 3))]
     ChTable {
         #[br(temp)]
-        #[bw(calc = Gamma { value: (header.byte_len() + 1).try_into().unwrap() })]
+        // This could be optimized by counting rather than doing another clone and into
+        #[bw(calc = Gamma { value: (Into::<StructHeader>::into(header.clone()).byte_len() + 1).try_into().unwrap() })]
         header_size: Gamma,
-        header: StructHeader,
-        #[br(parse_with = until_magic(0u8))]
-        #[bw(pad_after = 1)]
-        elements: Vec<ChArrayElement>,
+        #[br(map = |header: StructHeader| header.into())]
+        #[bw(map = |props: &Vec<TableHeaderProperty>| -> StructHeader { props.clone().into() })]
+        header: Vec<TableHeaderProperty>,
+        #[br(parse_with = until_magic_with(0u8, |r,e,_: ()| ChTableElement::read_options(r, e, (&header,)), |reader, endian, arg| {
+            u8::read_options(reader, endian, arg)
+        }))]
+        elements: Vec<ChTableElement>,
+        #[br(temp, ignore)]
+        #[bw(calc = 0)]
+        terminator: u8,
     },
     #[br(pre_assert(chunk_type.chunk_type() == 4))]
     ChSparseTable {
-        #[br(temp)]
-        #[bw(calc = Gamma { value: (header.byte_len() + 1).try_into().unwrap() })]
+        #[bw(calc = Gamma { value: (Into::<StructHeader>::into(header.clone()).byte_len() + 1).try_into().unwrap() })]
         header_size: Gamma,
-        header: StructHeader,
-        #[br(parse_with = until_magic(0u8))]
-        #[bw(pad_after = 1)]
-        elements: Vec<ChSparseArrayElement>,
+        #[br(map = |header: StructHeader| header.into())]
+        #[bw(map = |props: &Vec<TableHeaderProperty>| -> StructHeader { props.clone().into() })]
+        header: Vec<TableHeaderProperty>,
+        #[br(parse_with = until_magic_with(0u8, |r,e,_: ()| ChSparseTableElement::read_options(r, e, (&header,)), |reader, endian, arg| {
+            u8::read_options(reader, endian, arg)
+        }))]
+        elements: Vec<ChSparseTableElement>,
+        #[br(temp, ignore)]
+        #[bw(calc = 0)]
+        terminator: u8,
     },
 }
 
@@ -467,6 +351,12 @@ mod tests {
         let mut writer = Cursor::new(&mut d);
         Chunks::write_be(&chunk, &mut writer).unwrap();
         assert_eq!(&outer.data, &d);
+
+        // Useful for testing something wrong
+        // let mut f = File::create("AWrite.sav")?;
+        // f.write_all(&outer.data)?;
+        // let mut f = File::create("BWrite.sav")?;
+        // f.write_all(&d)?;
 
         Ok(())
     }
