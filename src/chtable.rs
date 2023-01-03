@@ -258,7 +258,7 @@ pub enum TableData {
     Str(TableDataList<u8>),
     #[br(pre_assert(matches!(header.data_type, TableDataType::Struct(_))))]
     Struct(
-        #[br(args(match &header.data_type { TableDataType::Struct(x) => &x, _ => panic!("Impossible") }))]
+        #[br(args(match &header.data_type { TableDataType::Struct(x) => &x, _ => unreachable!() }))]
          TableStruct,
     ),
     #[br(pre_assert(matches!(header.data_type, TableDataType::Int8List)))]
