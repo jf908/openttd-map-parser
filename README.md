@@ -20,6 +20,10 @@ cargo run --release --example town-renamer read ./game.sav
 cargo run --release --example town-renamer write ./game.sav ./towns.json -o new_save.sav
 ```
 
+## ImHex
+
+In `imhex/ottd-savefile.hexpat`, you'll find a pattern that you can load into ImHex to visualize an OpenTTD savefile in hex.
+
 ## Useful links
 
 - [OpenTTD's Savegame Format](https://github.com/OpenTTD/OpenTTD/blob/master/docs/savegame_format.md)
