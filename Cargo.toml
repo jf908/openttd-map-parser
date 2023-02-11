@@ -1,5 +1,11 @@
 [package]
 name = "ottd-map-parser"
+description = "An OpenTTD map parser and writer."
+authors = ["jf908"]
+repository = "https://github.com/jf908/openttd-map-parser"
+categories = ["encoding", "parser-implementations"]
+readme = "README.md"
+license = "GPL-2.0"
 version = "0.1.0"
 edition = "2021"
 

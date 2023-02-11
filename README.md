@@ -22,7 +22,7 @@ cargo run --release --example town-renamer write ./game.sav ./towns.json -o new_
 
 ## ImHex
 
-In `imhex/ottd-savefile.hexpat`, you'll find a pattern that you can load into ImHex to visualize an OpenTTD savefile in hex.
+In `imhex/ottd-savefile.hexpat`, you'll find a pattern that you can load into ImHex to visualize an OpenTTD savefile in hex. This will not work if the save file is compressed so you will have to disable compression in OTTD or decompress it with this library.
 
 ## Wasm
 
@@ -38,3 +38,9 @@ wasm-pack build --release --target web -- --no-default-features --features lzma-
 - [OpenTTD's Savegame Compression](https://wiki.openttd.org/en/Archive/Manual/Settings/Savegame%20format)
 - [OpenTTD Source](https://github.com/OpenTTD/OpenTTD)
 - [JGR Source](https://github.com/JGRennison/OpenTTD-patches)
+
+## Licenses
+
+This software is licensed under GNU General Public License version 2.0.
+
+Data structures derived from https://github.com/OpenTTD/OpenTTD and https://github.com/JGRennison/OpenTTD-patches are also licensed under GPL 2.0.
