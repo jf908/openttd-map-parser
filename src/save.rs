@@ -162,6 +162,15 @@ pub struct Save {
     pub chunks: Vec<Chunk>,
 }
 
+impl Save {
+    pub fn get(&self, tag: &[u8; 4]) -> Option<&ChunkValue> {
+        self.chunks
+            .iter()
+            .find(|x| &x.tag == tag)
+            .map(|chunk| &chunk.value)
+    }
+}
+
 #[binrw]
 #[brw(big)]
 #[derive(Debug)]

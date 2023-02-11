@@ -65,10 +65,8 @@ fn main() -> Result<()> {
             let save: Save = f.read_ne().unwrap();
 
             let slxi = save
-                .chunks
-                .iter()
-                .find(|x| &x.tag == b"SLXI")
-                .map(|slxi_chunk| match &slxi_chunk.value {
+                .get(b"SLXI")
+                .map(|slxi_chunk| match &slxi_chunk {
                     ChunkValue::ChRiff { data } => {
                         let c = &mut Cursor::new(&data);
                         let slxi: jgr::SLXI = c.read_ne().unwrap();
@@ -80,8 +78,8 @@ fn main() -> Result<()> {
                 })
                 .unwrap_or_default();
 
-            let maps = save.chunks.iter().find(|x| &x.tag == b"MAPS").unwrap();
-            let map_info: charray::Maps = match &maps.value {
+            let maps = save.get(b"MAPS").unwrap();
+            let map_info: charray::Maps = match &maps {
                 ChunkValue::ChRiff { data } => Cursor::new(data).read_ne().unwrap(),
                 ChunkValue::ChTable { elements, .. } => {
                     let dim_x = elements[0]

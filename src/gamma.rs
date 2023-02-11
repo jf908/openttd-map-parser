@@ -73,8 +73,7 @@ pub struct Gamma {
 
 #[cfg(test)]
 mod tests {
-    use binrw::Endian;
-    use std::io::Cursor;
+    use binrw::{io::Cursor, Endian};
 
     use crate::gamma::parse_gamma;
 

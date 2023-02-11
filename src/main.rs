@@ -33,8 +33,8 @@ fn main() -> Result<()> {
             .join(",")
     );
 
-    let maps = save.chunks.iter().find(|x| &x.tag == b"MAPS").unwrap();
-    let map_info: charray::Maps = match &maps.value {
+    let maps = save.get(b"MAPS").unwrap();
+    let map_info: charray::Maps = match &maps {
         ChunkValue::ChRiff { data } => Cursor::new(data).read_ne().unwrap(),
         ChunkValue::ChTable { elements, .. } => {
             let dim_x = elements[0]
