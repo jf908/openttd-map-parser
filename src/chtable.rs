@@ -5,11 +5,12 @@ use binrw::{
     io::{Read, Seek},
     BinRead, BinResult, BinWrite, Endian,
 };
+use serde::{Deserialize, Serialize};
 
 #[binrw]
 #[brw(big)]
 #[br(import(header: &Vec<TableHeaderProperty>))]
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ChTableElement {
     // Actual length = size - 1
     #[br(temp)]
@@ -28,7 +29,7 @@ pub struct ChTableElement {
 #[binrw]
 #[brw(big)]
 #[br(import(header: &Vec<TableHeaderProperty>))]
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ChSparseTableElement {
     // Actual length = size - 1
     #[br(temp)]
@@ -49,7 +50,7 @@ pub struct ChSparseTableElement {
 
 #[binrw]
 #[brw(big)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct StructHeaderProperty {
     data_type: SleType,
     #[br(temp)]
@@ -68,7 +69,7 @@ impl StructHeaderProperty {
 
 #[binrw]
 #[brw(big)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct StructHeader {
     #[br(parse_with = until_magic(0u8))]
     #[bw(pad_after = 1)]
@@ -226,7 +227,7 @@ impl Into<StructHeader> for Vec<TableHeaderProperty> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TableHeaderProperty {
     key: String,
     data_type: TableDataType,
@@ -234,7 +235,7 @@ pub struct TableHeaderProperty {
 
 #[binrw]
 #[br(import(header: &TableHeaderProperty))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum TableData {
     #[br(pre_assert(matches!(header.data_type, TableDataType::Int8)))]
     Int8(i8),
@@ -336,7 +337,7 @@ impl TableData {
 }
 
 #[binrw]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[br(import(header: &Vec<TableHeaderProperty>))]
 pub struct TableStruct {
     #[br(temp)]
@@ -361,7 +362,7 @@ fn parse<Reader: Read + Seek>(
 }
 
 #[binrw]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TableDataList<T>
 where
     T: for<'a> BinRead<Args<'a> = ()> + for<'a> BinWrite<Args<'a> = ()> + 'static,
@@ -375,7 +376,7 @@ where
 
 #[binrw]
 #[brw(repr(u8))]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SleType {
     Int8 = 1,
     UInt8 = 2,
@@ -399,7 +400,7 @@ pub enum SleType {
     StringIdList = 0b11001,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum TableDataType {
     Int8,
     UInt8,

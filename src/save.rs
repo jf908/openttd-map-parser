@@ -1,16 +1,24 @@
 use crate::chtable::{ChSparseTableElement, ChTableElement, StructHeader, TableHeaderProperty};
 use crate::gamma::{gamma_length, parse_gamma, write_gamma, Gamma};
 use crate::helpers::{until_magic, until_magic_with};
+#[cfg(feature = "lzma-rs")]
+use binrw::io::BufReader;
+#[cfg(feature = "xz2")]
+use binrw::io::{Read, Write};
 use binrw::{
     binrw,
-    io::{Cursor, Read, Result, Write},
+    io::{Cursor, Error, ErrorKind, Result},
     until_eof, BinRead, BinResult, BinWrite,
 };
+#[cfg(feature = "lzma-rs")]
+use lzma_rs::{xz_compress, xz_decompress};
 use modular_bitfield::{bitfield, specifiers::B4};
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "xz2")]
 use xz2::{read::XzDecoder, write::XzEncoder};
 
 #[binrw]
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub enum CompressionType {
     // Compressed with LZO (deprecated, only really old savegames would use this).
     #[brw(magic = b"OTTD")]
@@ -29,86 +37,130 @@ pub enum CompressionType {
     OTTS,
 }
 
+/// Performs save file compression on a byte slice of the compressed data
 fn compress_save(compression_type: &CompressionType, blob: &Vec<u8>) -> Result<Vec<u8>> {
     match compression_type {
-        CompressionType::OTTD => {
-            panic!("Old save file not supported")
-        }
+        CompressionType::OTTD => Err(Error::new(ErrorKind::Other, "Old save file not supported")),
         CompressionType::OTTN => Ok(blob.clone()),
-        CompressionType::OTTZ => {
-            panic!("zlib compression not supported (yet)")
-        }
+        CompressionType::OTTZ => Err(Error::new(ErrorKind::Other, "zlib not supported (yet)")),
         CompressionType::OTTX => {
-            let mut buffer: Vec<u8> = Vec::new();
-
-            {
-                let mut encoder = XzEncoder::new(&mut buffer, 2);
-                encoder.write(&blob).unwrap();
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "xz2")] {
+                    let mut buffer: Vec<u8> = Vec::new();
+                    {
+                        let mut encoder = XzEncoder::new(&mut buffer, 2);
+                        encoder.write(&blob).unwrap();
+                    }
+                    Ok(buffer)
+                } else if #[cfg(feature = "lzma-rs")] {
+                    let mut buffer: Vec<u8> = Vec::new();
+                    {
+                        xz_compress(&mut Cursor::new(blob), &mut buffer)?;
+                    }
+                    Ok(buffer)
+                } else {
+                    Err(Error::new(ErrorKind::Other, "Not compiled with LZMA support"))
+                }
             }
-
-            Ok(buffer)
         }
-        CompressionType::OTTS => zstd::stream::encode_all(&mut Cursor::new(blob), 0),
+        CompressionType::OTTS => {
+            #[cfg(not(feature = "zstd"))]
+            return Err(Error::new(
+                ErrorKind::Other,
+                "Not compiled with zstd support",
+            ));
+            #[cfg(feature = "zstd")]
+            zstd::stream::encode_all(&mut Cursor::new(blob), 0)
+        }
     }
 }
 
+/// Performs save file decompression on a byte slice of the decompressed data
 fn decompress_save(compression_type: &CompressionType, blob: Vec<u8>) -> Result<Vec<u8>> {
     match compression_type {
-        CompressionType::OTTD => {
-            panic!("Old save file not supported")
-        }
+        CompressionType::OTTD => Err(Error::new(ErrorKind::Other, "Old save file not supported")),
         CompressionType::OTTN => Ok(blob),
-        CompressionType::OTTZ => {
-            panic!("zlib compression not supported (yet)")
-        }
+        CompressionType::OTTZ => Err(Error::new(ErrorKind::Other, "zlib not supported (yet)")),
         CompressionType::OTTX => {
-            let mut buffer = Vec::new();
-            XzDecoder::new(Cursor::new(&blob)).read_to_end(&mut buffer)?;
-            Ok(buffer)
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "xz2")] {
+                    let mut buffer = Vec::new();
+                    XzDecoder::new(Cursor::new(&blob)).read_to_end(&mut buffer)?;
+                    Ok(buffer)
+                } else if #[cfg(feature = "lzma-rs")] {
+                    let mut buffer = Vec::new();
+                    xz_decompress(&mut Cursor::new(blob), &mut buffer).map_err(lzma_error_to_io)?;
+                    Ok(buffer)
+                } else {
+                    Err(Error::new(ErrorKind::Other, "Not compiled with LZMA support"))
+                }
+            }
         }
-        CompressionType::OTTS => zstd::stream::decode_all(&mut Cursor::new(blob)),
+        CompressionType::OTTS => {
+            #[cfg(not(feature = "zstd"))]
+            return Err(Error::new(
+                ErrorKind::Other,
+                "Not compiled with zstd support",
+            ));
+            #[cfg(feature = "zstd")]
+            zstd::stream::decode_all(&mut Cursor::new(blob))
+        }
     }
 }
 
+/// A parser that performs save file decompression on data taken from a reader
 #[binrw::parser(reader, endian)]
 fn chunk_reader(compression_type: &CompressionType) -> BinResult<Vec<Chunk>> {
     match compression_type {
-        CompressionType::OTTD => {
-            panic!("Old save file not supported")
-        }
+        CompressionType::OTTD => Err(binrw::Error::Io(Error::new(ErrorKind::Other, "Old save file not supported"))),
         CompressionType::OTTN => Chunks::read_options(reader, endian, ()),
-        CompressionType::OTTZ => {
-            panic!("zlib compression not supported (yet)")
-        }
+        CompressionType::OTTZ => Err(binrw::Error::Io(Error::new(ErrorKind::Other, "zlib not supported (yet)"))),
         CompressionType::OTTX => {
-            let mut buffer = Vec::new();
-            let mut new_reader = XzDecoder::new(reader);
-            new_reader.read_to_end(&mut buffer)?;
-            Chunks::read_options(&mut Cursor::new(&mut buffer), endian, ())
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "xz2")] {
+                    let mut buffer = Vec::new();
+                    let mut new_reader = XzDecoder::new(reader);
+                    new_reader.read_to_end(&mut buffer)?;
+                    Chunks::read_options(&mut Cursor::new(&mut buffer), endian, ())
+                } else if #[cfg(feature = "lzma-rs")] {
+                    let mut buffer = Vec::new();
+                    let mut buf_reader = BufReader::new(reader);
+                    xz_decompress(&mut buf_reader, &mut buffer).map_err(lzma_error_to_io)?;
+                    Chunks::read_options(&mut Cursor::new(&mut buffer), endian, ())
+                } else {
+                    return Err(binrw::Error::Io(Error::new(ErrorKind::Other, "Not compiled with LZMA support")));
+                }
+            }
         }
+
         CompressionType::OTTS => {
-            let decoder = zstd::stream::decode_all(reader)?;
-            Chunks::read_options(&mut Cursor::new(decoder), endian, ())
+            #[cfg(not(feature = "zstd"))]
+            return Err(binrw::Error::Io(Error::new(ErrorKind::Other, "Not compiled with zstd support")));
+            #[cfg(feature = "zstd")]
+            Chunks::read_options(&mut Cursor::new(zstd::stream::decode_all(reader)?), endian, ())
         }
     }
     .map(|c| c.chunks)
 }
 
-// Note that this function does not write the 4 byte terminator at the end of the file
+/// A writer that performs save file compression on parsed data.
+/// Includes the 0u32 terminator before compressing.
 #[binrw::writer(writer, endian)]
 fn chunk_writer(chunks: &Vec<Chunk>, compression_type: &CompressionType) -> BinResult<()> {
     match compression_type {
-        CompressionType::OTTD => {
-            panic!("Old save file not supported")
-        }
+        CompressionType::OTTD => Err(binrw::Error::Io(Error::new(
+            ErrorKind::Other,
+            "Old save file not supported",
+        ))),
         CompressionType::OTTN => {
             chunks.write_options(writer, endian, ())?;
             // Terminator
             0u32.write_options(writer, endian, ())
         }
-        CompressionType::OTTZ => {
-            panic!("zlib compression not supported (yet)")
-        }
+        CompressionType::OTTZ => Err(binrw::Error::Io(Error::new(
+            ErrorKind::Other,
+            "zlib not supported (yet)",
+        ))),
         CompressionType::OTTX => {
             let mut buffer: Vec<u8> = Vec::new();
 
@@ -119,37 +171,45 @@ fn chunk_writer(chunks: &Vec<Chunk>, compression_type: &CompressionType) -> BinR
                 0u32.write_options(&mut writer, endian, ())?;
             }
 
-            let mut encoder = XzEncoder::new(writer, 2);
-            encoder.write_all(&mut buffer)?;
-
-            Ok(())
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "xz2")] {
+                    let mut encoder = XzEncoder::new(writer, 2);
+                    encoder.write_all(&mut buffer)?;
+                    Ok(())
+                } else if #[cfg(feature = "lzma-rs")] {
+                    xz_compress(&mut Cursor::new(buffer), writer)?;
+                    Ok(())
+                } else {
+                    Err(binrw::Error::Io(Error::new(ErrorKind::Other, "Not compiled with LZMA support")))
+                }
+            }
         }
         CompressionType::OTTS => {
-            let mut buffer: Vec<u8> = Vec::new();
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "zstd")] {
+                    let mut buffer: Vec<u8> = Vec::new();
 
-            {
-                let mut writer = Cursor::new(&mut buffer);
-                chunks.write_options(&mut writer, endian, ())?;
-                // Terminator
-                0u32.write_options(&mut writer, endian, ())?;
+                    {
+                        let mut writer = Cursor::new(&mut buffer);
+                        chunks.write_options(&mut writer, endian, ())?;
+                        // Terminator
+                        0u32.write_options(&mut writer, endian, ())?;
+                    }
+
+                    zstd::stream::copy_encode(&mut Cursor::new(buffer), writer, 0)?;
+
+                    Ok(())
+                } else {
+                    Err(binrw::Error::Io(Error::new(ErrorKind::Other, "Not compiled with zstd support")))
+                }
             }
-
-            zstd::stream::copy_encode(&mut Cursor::new(buffer), writer, 0)?;
-
-            Ok(())
         }
     }
 }
 
 #[binrw]
-struct RawChunk {
-    #[br(parse_with = until_eof)]
-    data: Vec<u8>,
-}
-
-#[binrw]
 #[brw(big)]
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Save {
     pub compression_type: CompressionType,
     // The next two bytes indicate which savegame version used.
@@ -173,7 +233,7 @@ impl Save {
 
 #[binrw]
 #[brw(big)]
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct OuterSave {
     pub compression_type: CompressionType,
     // The next two bytes indicate which savegame version used.
@@ -187,7 +247,7 @@ pub struct OuterSave {
 
 #[binrw]
 #[brw(big)]
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Chunks {
     #[br(parse_with = until_eof)]
     pub chunks: Vec<Chunk>,
@@ -197,8 +257,8 @@ pub struct Chunks {
 }
 
 #[binrw]
-#[derive(Debug)]
 #[brw(big)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Chunk {
     pub tag: [u8; 4],
     #[br(temp)]
@@ -210,7 +270,7 @@ pub struct Chunk {
 
 #[binrw]
 #[brw(big)]
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ChArrayElement {
     // Actual length = size - 1
     #[br(temp)]
@@ -222,7 +282,7 @@ pub struct ChArrayElement {
 
 #[binrw]
 #[brw(big)]
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ChSparseArrayElement {
     // Actual length = length - 1
     #[br(temp)]
@@ -237,7 +297,7 @@ pub struct ChSparseArrayElement {
 
 #[bitfield]
 #[binrw]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[br(map = Self::from_bytes)]
 #[bw(map = |&x| Self::into_bytes(x))]
 pub struct ChunkType {
@@ -268,7 +328,7 @@ impl ChunkType {
 #[binrw]
 #[brw(big)]
 #[br(import { chunk_type: ChunkType })]
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub enum ChunkValue {
     #[br(pre_assert(chunk_type.chunk_type() == 0))]
     ChRiff {
@@ -322,6 +382,16 @@ pub enum ChunkValue {
         #[bw(calc = 0)]
         terminator: u8,
     },
+}
+
+#[cfg(feature = "lzma-rs")]
+fn lzma_error_to_io(error: lzma_rs::error::Error) -> Error {
+    match error {
+        lzma_rs::error::Error::IoError(e) => e,
+        lzma_rs::error::Error::HeaderTooShort(e) => e,
+        lzma_rs::error::Error::LzmaError(str) => Error::new(ErrorKind::Other, str),
+        lzma_rs::error::Error::XzError(str) => Error::new(ErrorKind::Other, str),
+    }
 }
 
 #[cfg(test)]

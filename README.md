@@ -24,6 +24,14 @@ cargo run --release --example town-renamer write ./game.sav ./towns.json -o new_
 
 In `imhex/ottd-savefile.hexpat`, you'll find a pattern that you can load into ImHex to visualize an OpenTTD savefile in hex.
 
+## Wasm
+
+With wasm pack (installed with `cargo install wasm-pack`)
+
+```sh
+wasm-pack build --release --target web -- --no-default-features --features lzma-rs
+```
+
 ## Useful links
 
 - [OpenTTD's Savegame Format](https://github.com/OpenTTD/OpenTTD/blob/master/docs/savegame_format.md)
