@@ -3,6 +3,8 @@ use binrw::{io::Cursor, BinReaderExt};
 #[cfg(target_arch = "wasm32")]
 use save::{OuterSave, Save};
 #[cfg(target_arch = "wasm32")]
+use serde::Serialize;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 pub mod charray;
@@ -27,5 +29,6 @@ pub fn parse_file(data: &[u8]) -> JsValue {
     let mut c = Cursor::new(data);
     let output: Save = c.read_ne().unwrap();
 
-    serde_wasm_bindgen::to_value(&output).unwrap()
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    output.serialize(&serializer).unwrap()
 }

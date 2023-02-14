@@ -20,19 +20,19 @@ use xz2::{read::XzDecoder, write::XzEncoder};
 #[binrw]
 #[derive(Debug, Deserialize, Serialize)]
 pub enum CompressionType {
-    // Compressed with LZO (deprecated, only really old savegames would use this).
+    /// Compressed with LZO (deprecated, only really old savegames would use this).
     #[brw(magic = b"OTTD")]
     OTTD,
-    // No compression.
+    /// No compression.
     #[brw(magic = b"OTTN")]
     OTTN,
-    // Compressed with zlib.
+    /// Compressed with zlib.
     #[brw(magic = b"OTTZ")]
     OTTZ,
-    // Compressed with LZMA.
+    /// Compressed with LZMA.
     #[brw(magic = b"OTTX")]
     OTTX,
-    // Compressed with zstd (from JGR, not in vanilla OpenTTD)
+    /// Compressed with zstd (from JGR, not in vanilla OpenTTD)
     #[brw(magic = b"OTTS")]
     OTTS,
 }
@@ -209,7 +209,7 @@ fn chunk_writer(chunks: &Vec<Chunk>, compression_type: &CompressionType) -> BinR
 
 #[binrw]
 #[brw(big)]
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Save {
     pub compression_type: CompressionType,
     // The next two bytes indicate which savegame version used.
@@ -219,6 +219,7 @@ pub struct Save {
     // Wish I could use map_stream here from the new PR but no rust LZMA decompressers support Read + Seek :(
     #[br(parse_with = |r,e,_: ()| chunk_reader(r, e, &compression_type))]
     #[bw(write_with = |r,e,d,_: ()| chunk_writer(r, e, d, &compression_type))]
+    #[serde(with = "chunk")]
     pub chunks: Vec<Chunk>,
 }
 
@@ -228,6 +229,61 @@ impl Save {
             .iter()
             .find(|x| &x.tag == tag)
             .map(|chunk| &chunk.value)
+    }
+}
+
+mod chunk {
+
+    use super::{Chunk, ChunkValue};
+    use serde::{
+        de::{MapAccess, Visitor},
+        ser::SerializeMap,
+        Deserializer, Serializer,
+    };
+
+    pub fn serialize<S>(chunks: &Vec<Chunk>, serializer: S) -> core::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(chunks.len()))?;
+        for chunk in chunks {
+            map.serialize_entry(&String::from_utf8_lossy(&chunk.tag), &chunk.value)?;
+        }
+        map.end()
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> core::result::Result<Vec<Chunk>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct MapVisitor;
+
+        impl<'de> Visitor<'de> for MapVisitor {
+            type Value = Vec<Chunk>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a chunk value")
+            }
+
+            fn visit_map<A>(self, mut access: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut values = Vec::with_capacity(access.size_hint().unwrap_or(0));
+
+                while let Some((key, value)) = access.next_entry::<&str, ChunkValue>()? {
+                    let tag = key
+                        .as_bytes()
+                        .try_into()
+                        .map_err(|_| serde::de::Error::custom("Map tag must be 4 chars"))?;
+                    values.push(Chunk { tag, value });
+                }
+
+                Ok(values)
+            }
+        }
+
+        deserializer.deserialize_map(MapVisitor)
     }
 }
 
@@ -247,7 +303,7 @@ pub struct OuterSave {
 
 #[binrw]
 #[brw(big)]
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug)]
 pub struct Chunks {
     #[br(parse_with = until_eof)]
     pub chunks: Vec<Chunk>,
@@ -258,7 +314,7 @@ pub struct Chunks {
 
 #[binrw]
 #[brw(big)]
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub struct Chunk {
     pub tag: [u8; 4],
     #[br(temp)]
@@ -277,6 +333,7 @@ pub struct ChArrayElement {
     #[bw(calc = Gamma { value: (data.len() + 1).try_into().unwrap() })]
     size: Gamma,
     #[br(count = size.value.saturating_sub(1))]
+    #[serde(with = "serde_bytes")]
     pub data: Vec<u8>,
 }
 
@@ -292,6 +349,7 @@ pub struct ChSparseArrayElement {
     #[bw(write_with = write_gamma)]
     pub index: u32,
     #[br(count = size.value.saturating_sub(1 + gamma_length(index)))]
+    #[serde(with = "serde_bytes")]
     pub data: Vec<u8>,
 }
 
@@ -329,6 +387,7 @@ impl ChunkType {
 #[brw(big)]
 #[br(import { chunk_type: ChunkType })]
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
 pub enum ChunkValue {
     #[br(pre_assert(chunk_type.chunk_type() == 0))]
     ChRiff {
@@ -336,6 +395,7 @@ pub enum ChunkValue {
         #[bw(calc = data.len().try_into().unwrap(), map = |x: u32| { let bytes = x.to_be_bytes(); [bytes[1], bytes[2], bytes[3]] })]
         size: u32,
         #[br(count = size)]
+        #[serde(with = "serde_bytes")]
         data: Vec<u8>,
     },
     #[br(pre_assert(chunk_type.chunk_type() == 1))]
@@ -402,7 +462,7 @@ mod tests {
         io::{Cursor, Result},
     };
 
-    use crate::save::{Chunks, OuterSave};
+    use crate::save::{Chunks, OuterSave, Save};
 
     #[test]
     fn parse_and_write_tiny() -> Result<()> {
@@ -436,6 +496,21 @@ mod tests {
         // f.write_all(&outer.data)?;
         // let mut f = File::create("BWrite.sav")?;
         // f.write_all(&d)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn serialize() -> Result<()> {
+        let mut f = File::open("tests/TinyVanillaTest.sav")?;
+        let save: Save = f.read_ne().unwrap();
+
+        let json = serde_json::to_string(&save)?;
+
+        let value: Save = serde_json::from_str(&json)?;
+
+        // Not an exact test but at least we know there are no errors
+        assert_eq!(save.chunks.len(), value.chunks.len());
 
         Ok(())
     }

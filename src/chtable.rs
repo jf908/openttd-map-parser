@@ -20,6 +20,7 @@ pub struct ChTableElement {
         Ok((props.key.to_string(), TableData::read_options(r, e, (props,))?))
     }))]
     #[bw(map = |data| -> Vec<TableData> { data.iter().map(|x| x.1.clone()).collect() })]
+    #[serde(with = "tuple_vec_map")]
     pub data: Vec<(String, TableData)>,
     // Sometimes there's some leftover data here
     #[br(count(size.value as usize - 1 - (data.iter().map(|x| x.1.byte_len()).sum::<usize>())))]
@@ -42,6 +43,7 @@ pub struct ChSparseTableElement {
         Ok((props.key.to_string(), TableData::read_options(r, e, (props,))?))
     }))]
     #[bw(map = |data| -> Vec<TableData> { data.iter().map(|x| x.1.clone()).collect() })]
+    #[serde(with = "tuple_vec_map")]
     pub data: Vec<(String, TableData)>,
     // Sometimes there's some leftover data here
     #[br(count(size.value as usize - 1 - (data.iter().map(|x| x.1.byte_len()).sum::<usize>()) - gamma_length(index) as usize))]
@@ -236,6 +238,7 @@ pub struct TableHeaderProperty {
 #[binrw]
 #[br(import(header: &TableHeaderProperty))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type", content = "value")]
 pub enum TableData {
     #[br(pre_assert(matches!(header.data_type, TableDataType::Int8)))]
     Int8(i8),
@@ -400,26 +403,105 @@ pub enum SleType {
     StringIdList = 0b11001,
 }
 
+macro_rules! named_unit_variant {
+    ($variant:ident) => {
+        pub mod $variant {
+            pub fn serialize<S>(serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serializer.serialize_str(stringify!($variant))
+            }
+
+            pub fn deserialize<'de, D>(deserializer: D) -> Result<(), D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct V;
+                impl<'de> serde::de::Visitor<'de> for V {
+                    type Value = ();
+
+                    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                        f.write_str(concat!("\"", stringify!($variant), "\""))
+                    }
+
+                    fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                        if value == stringify!($variant) {
+                            Ok(())
+                        } else {
+                            Err(E::invalid_value(serde::de::Unexpected::Str(value), &self))
+                        }
+                    }
+                }
+                deserializer.deserialize_str(V)
+            }
+        }
+    };
+}
+
+#[allow(non_snake_case)]
+mod named {
+    named_unit_variant!(Int8);
+    named_unit_variant!(UInt8);
+    named_unit_variant!(Int16);
+    named_unit_variant!(UInt16);
+    named_unit_variant!(Int32);
+    named_unit_variant!(UInt32);
+    named_unit_variant!(Int64);
+    named_unit_variant!(UInt64);
+    named_unit_variant!(StringId);
+    named_unit_variant!(Str);
+    named_unit_variant!(Int8List);
+    named_unit_variant!(UInt8List);
+    named_unit_variant!(Int16List);
+    named_unit_variant!(UInt16List);
+    named_unit_variant!(Int32List);
+    named_unit_variant!(UInt32List);
+    named_unit_variant!(Int64List);
+    named_unit_variant!(UInt64List);
+    named_unit_variant!(StringIdList);
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
 pub enum TableDataType {
+    #[serde(with = "named::Int8")]
     Int8,
+    #[serde(with = "named::UInt8")]
     UInt8,
+    #[serde(with = "named::Int16")]
     Int16,
+    #[serde(with = "named::UInt16")]
     UInt16,
+    #[serde(with = "named::Int32")]
     Int32,
+    #[serde(with = "named::UInt32")]
     UInt32,
+    #[serde(with = "named::Int64")]
     Int64,
+    #[serde(with = "named::UInt64")]
     UInt64,
+    #[serde(with = "named::StringId")]
     StringId,
+    #[serde(with = "named::Str")]
     Str,
     Struct(Vec<TableHeaderProperty>),
+    #[serde(with = "named::Int8List")]
     Int8List,
+    #[serde(with = "named::UInt8List")]
     UInt8List,
+    #[serde(with = "named::Int16List")]
     Int16List,
+    #[serde(with = "named::UInt16List")]
     UInt16List,
+    #[serde(with = "named::Int32List")]
     Int32List,
+    #[serde(with = "named::UInt32List")]
     UInt32List,
+    #[serde(with = "named::Int64List")]
     Int64List,
+    #[serde(with = "named::UInt64List")]
     UInt64List,
+    #[serde(with = "named::StringIdList")]
     StringIdList,
 }
