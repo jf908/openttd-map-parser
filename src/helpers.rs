@@ -3,16 +3,6 @@ use binrw::{
     BinRead, BinResult, Endian,
 };
 
-#[binrw::parser(reader, endian)]
-fn default_reader<'a, T: BinRead>(args: T::Args<'a>, ...) -> BinResult<T>
-where
-    T::Args<'a>: Clone,
-{
-    let mut value = T::read_options(reader, endian, args.clone())?;
-    value.after_parse(reader, endian, args)?;
-    Ok(value)
-}
-
 pub fn until_magic<Reader, T, B, Arg, Ret>(
     magic: B,
 ) -> impl Fn(&mut Reader, Endian, Arg) -> BinResult<Ret>
@@ -30,7 +20,7 @@ where
     Arg: Clone,
     Ret: FromIterator<T>,
 {
-    until_magic_with(magic, default_reader, |reader, endian, arg| {
+    until_magic_with(magic, T::read_options, |reader, endian, arg| {
         B::read_options(reader, endian, arg)
     })
 }

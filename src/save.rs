@@ -7,8 +7,9 @@ use binrw::io::BufReader;
 use binrw::io::{Read, Write};
 use binrw::{
     binrw,
+    helpers::until_eof,
     io::{Cursor, Error, ErrorKind, Result},
-    until_eof, BinRead, BinResult, BinWrite,
+    BinRead, BinResult, BinWrite,
 };
 #[cfg(feature = "lzma-rs")]
 use lzma_rs::{xz_compress, xz_decompress};
@@ -217,8 +218,8 @@ pub struct Save {
     // The next two bytes can be ignored, and were only used in really old savegames.
     _ignore: u16,
     // Wish I could use map_stream here from the new PR but no rust LZMA decompressers support Read + Seek :(
-    #[br(parse_with = |r,e,_: ()| chunk_reader(r, e, &compression_type))]
-    #[bw(write_with = |r,e,d,_: ()| chunk_writer(r, e, d, &compression_type))]
+    #[br(parse_with = |r,e,_: ()| chunk_reader(r, e, (&compression_type,)))]
+    #[bw(write_with = |r,e,d,_: ()| chunk_writer(r, e, d, (&compression_type,)))]
     #[serde(with = "chunk")]
     pub chunks: Vec<Chunk>,
 }
