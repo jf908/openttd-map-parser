@@ -272,7 +272,7 @@ mod chunk {
             {
                 let mut values = Vec::with_capacity(access.size_hint().unwrap_or(0));
 
-                while let Some((key, value)) = access.next_entry::<&str, ChunkValue>()? {
+                while let Some((key, value)) = access.next_entry::<String, ChunkValue>()? {
                     let tag = key
                         .as_bytes()
                         .try_into()
@@ -310,7 +310,7 @@ pub struct Chunks {
     pub chunks: Vec<Chunk>,
     #[br(temp)]
     #[bw(calc = 0)]
-    terminator: u32,
+    _terminator: u32,
 }
 
 #[binrw]
@@ -416,7 +416,7 @@ pub enum ChunkValue {
         #[br(temp)]
         // This could be optimized by counting rather than doing another clone and into
         #[bw(calc = Gamma { value: (Into::<StructHeader>::into(header.clone()).byte_len() + 1).try_into().unwrap() })]
-        header_size: Gamma,
+        _header_size: Gamma,
         #[br(map = |header: StructHeader| header.into())]
         #[bw(map = |props: &Vec<TableHeaderProperty>| -> StructHeader { props.clone().into() })]
         header: Vec<TableHeaderProperty>,
@@ -431,7 +431,7 @@ pub enum ChunkValue {
     #[br(pre_assert(chunk_type.chunk_type() == 4))]
     ChSparseTable {
         #[bw(calc = Gamma { value: (Into::<StructHeader>::into(header.clone()).byte_len() + 1).try_into().unwrap() })]
-        header_size: Gamma,
+        _header_size: Gamma,
         #[br(map = |header: StructHeader| header.into())]
         #[bw(map = |props: &Vec<TableHeaderProperty>| -> StructHeader { props.clone().into() })]
         header: Vec<TableHeaderProperty>,
@@ -466,8 +466,8 @@ mod tests {
     use crate::save::{Chunks, OuterSave, Save};
 
     #[test]
-    fn parse_and_write_tiny() -> Result<()> {
-        let mut f = File::open("tests/tiny.sav")?;
+    fn parse_and_write_outer_tiny() -> Result<()> {
+        let mut f = File::open("./BIG.sav")?;
 
         let outer: OuterSave = f.read_ne().unwrap();
         let chunk: Chunks = Cursor::new(&outer.data).read_ne().unwrap();
@@ -481,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_and_write_new_tiny() -> Result<()> {
+    fn parse_and_write_outer_new_tiny() -> Result<()> {
         let mut f = File::open("tests/TinyVanillaTest.sav")?;
 
         let outer: OuterSave = f.read_ne().unwrap();
