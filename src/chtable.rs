@@ -259,30 +259,70 @@ pub enum TableData {
     #[br(pre_assert(matches!(header.data_type, TableDataType::StringId)))]
     StringId(u16),
     #[br(pre_assert(matches!(header.data_type, TableDataType::Str)))]
-    Str(TableDataList<u8>),
+    Str(
+        #[br(map = |x: TableString| x.value)]
+        #[bw(map = |x: &String| TableString { value: x.clone() })]
+        String,
+    ),
     #[br(pre_assert(matches!(header.data_type, TableDataType::Struct(_))))]
     Struct(
         #[br(args(match &header.data_type { TableDataType::Struct(x) => &x, _ => unreachable!() }))]
          TableStruct,
     ),
     #[br(pre_assert(matches!(header.data_type, TableDataType::Int8List)))]
-    Int8List(TableDataList<i8>),
+    Int8List(
+        #[br(map = |x: TableDataList<i8>| x.data)]
+        #[bw(map = |x: &Vec<i8>| TableDataList::<i8> { data: x.clone() })]
+        Vec<i8>,
+    ),
     #[br(pre_assert(matches!(header.data_type, TableDataType::UInt8List)))]
-    UInt8List(TableDataList<u8>),
+    UInt8List(
+        #[br(map = |x: TableDataList<u8>| x.data)]
+        #[bw(map = |x: &Vec<u8>| TableDataList::<u8> { data: x.clone()})]
+        Vec<u8>,
+    ),
     #[br(pre_assert(matches!(header.data_type, TableDataType::Int16List)))]
-    Int16List(TableDataList<i16>),
+    Int16List(
+        #[br(map = |x: TableDataList<i16>| x.data)]
+        #[bw(map = |x: &Vec<i16>| TableDataList::<i16> { data: x.clone()})]
+        Vec<i16>,
+    ),
     #[br(pre_assert(matches!(header.data_type, TableDataType::UInt16List)))]
-    UInt16List(TableDataList<u16>),
+    UInt16List(
+        #[br(map = |x: TableDataList<u16>| x.data)]
+        #[bw(map = |x: &Vec<u16>| TableDataList::<u16> { data: x.clone()})]
+        Vec<u16>,
+    ),
     #[br(pre_assert(matches!(header.data_type, TableDataType::Int32List)))]
-    Int32List(TableDataList<i32>),
+    Int32List(
+        #[br(map = |x: TableDataList<i32>| x.data)]
+        #[bw(map = |x: &Vec<i32>| TableDataList::<i32> { data: x.clone()})]
+        Vec<i32>,
+    ),
     #[br(pre_assert(matches!(header.data_type, TableDataType::UInt32List)))]
-    UInt32List(TableDataList<u32>),
+    UInt32List(
+        #[br(map = |x: TableDataList<u32>| x.data)]
+        #[bw(map = |x: &Vec<u32>| TableDataList::<u32> { data: x.clone()})]
+        Vec<u32>,
+    ),
     #[br(pre_assert(matches!(header.data_type, TableDataType::Int64List)))]
-    Int64List(TableDataList<i64>),
+    Int64List(
+        #[br(map = |x: TableDataList<i64>| x.data)]
+        #[bw(map = |x: &Vec<i64>| TableDataList::<i64> { data: x.clone()})]
+        Vec<i64>,
+    ),
     #[br(pre_assert(matches!(header.data_type, TableDataType::UInt64List)))]
-    UInt64List(TableDataList<u64>),
+    UInt64List(
+        #[br(map = |x: TableDataList<u64>| x.data)]
+        #[bw(map = |x: &Vec<u64>| TableDataList::<u64> { data: x.clone()})]
+        Vec<u64>,
+    ),
     #[br(pre_assert(matches!(header.data_type, TableDataType::StringIdList)))]
-    StringIdList(TableDataList<u16>),
+    StringIdList(
+        #[br(map = |x: TableDataList<u16>| x.data)]
+        #[bw(map = |x: &Vec<u16>| TableDataList::<u16> { data: x.clone()})]
+        Vec<u16>,
+    ),
 }
 
 impl TableData {
@@ -297,7 +337,7 @@ impl TableData {
             TableData::Int64(_) => 8,
             TableData::UInt64(_) => 8,
             TableData::StringId(_) => 2,
-            TableData::Str(list) => gamma_length(list.data.len() as u32) as usize + list.data.len(),
+            TableData::Str(str) => gamma_length(str.len() as u32) as usize + str.len(),
             TableData::Struct(list) => {
                 gamma_length(list.data.len() as u32) as usize
                     + list
@@ -308,32 +348,22 @@ impl TableData {
                         })
                         .sum::<usize>()
             }
-            TableData::Int8List(list) => {
-                gamma_length(list.data.len() as u32) as usize + list.data.len()
-            }
-            TableData::UInt8List(list) => {
-                gamma_length(list.data.len() as u32) as usize + list.data.len()
-            }
-            TableData::Int16List(list) => {
-                gamma_length(list.data.len() as u32) as usize + list.data.len() * 2
-            }
+            TableData::Int8List(list) => gamma_length(list.len() as u32) as usize + list.len(),
+            TableData::UInt8List(list) => gamma_length(list.len() as u32) as usize + list.len(),
+            TableData::Int16List(list) => gamma_length(list.len() as u32) as usize + list.len() * 2,
             TableData::UInt16List(list) => {
-                gamma_length(list.data.len() as u32) as usize + list.data.len() * 2
+                gamma_length(list.len() as u32) as usize + list.len() * 2
             }
-            TableData::Int32List(list) => {
-                gamma_length(list.data.len() as u32) as usize + list.data.len() * 4
-            }
+            TableData::Int32List(list) => gamma_length(list.len() as u32) as usize + list.len() * 4,
             TableData::UInt32List(list) => {
-                gamma_length(list.data.len() as u32) as usize + list.data.len() * 4
+                gamma_length(list.len() as u32) as usize + list.len() * 4
             }
-            TableData::Int64List(list) => {
-                gamma_length(list.data.len() as u32) as usize + list.data.len() * 8
-            }
+            TableData::Int64List(list) => gamma_length(list.len() as u32) as usize + list.len() * 8,
             TableData::UInt64List(list) => {
-                gamma_length(list.data.len() as u32) as usize + list.data.len() * 8
+                gamma_length(list.len() as u32) as usize + list.len() * 8
             }
             TableData::StringIdList(list) => {
-                gamma_length(list.data.len() as u32) as usize + list.data.len() * 2
+                gamma_length(list.len() as u32) as usize + list.len() * 2
             }
         }
     }
@@ -362,6 +392,17 @@ fn parse<Reader: Read + Seek>(
         props.key.to_string(),
         TableData::read_options(reader, endian, (props,))?,
     ))
+}
+
+#[binrw]
+#[derive(Debug)]
+pub struct TableString {
+    #[br(temp)]
+    #[bw(calc = Gamma { value: (value.len()).try_into().unwrap() })]
+    size: Gamma,
+    #[br(count = size.value, map = |x: Vec<u8>| String::from_utf8_lossy(&x).to_string())]
+    #[bw(map = |x: &String| x.as_bytes())]
+    value: String,
 }
 
 #[binrw]

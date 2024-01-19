@@ -41,3 +41,8 @@ gloo-utils = { version = "0.2", features = ["serde"] }
 
 [dev-dependencies]
 clap = { version = "4.0", features = ["derive"] }
+criterion = "0.5.1"
+
+[[bench]]
+name = "bench"
+harness = false
