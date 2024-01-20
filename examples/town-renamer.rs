@@ -109,9 +109,9 @@ fn main() -> Result<()> {
                 }
             };
 
-            let city_chunk = save.chunks.iter().find(|x| &x.tag == b"CITY").unwrap();
+            let city_chunk = save.get(b"CITY").unwrap();
 
-            let cities: Vec<charray::City> = match &city_chunk.value {
+            let cities: Vec<charray::City> = match city_chunk {
                 ChunkValue::ChArray { elements } => elements
                     .iter()
                     .map(|el| {
@@ -151,10 +151,8 @@ fn main() -> Result<()> {
             let mut save: Save = f.read_ne().unwrap();
 
             let slxi = save
-                .chunks
-                .iter()
-                .find(|x| &x.tag == b"SLXI")
-                .map(|slxi_chunk| match &slxi_chunk.value {
+                .get(b"SLXI")
+                .map(|slxi_chunk| match slxi_chunk {
                     ChunkValue::ChRiff { data } => {
                         let c = &mut Cursor::new(&data);
                         let slxi: jgr::SLXI = c.read_ne().unwrap();
